@@ -9,6 +9,7 @@ export const useImagePreloader = (sequencePath: string, frameCount: number) => {
             const promises = Array.from({ length: frameCount }, (_, i) => {
                 return new Promise<HTMLImageElement>((resolve) => {
                     const img = new Image();
+                    img.decoding = 'async';
                     img.src = `${sequencePath}/${(i + 1).toString().padStart(3, '0')}.jpg`;
                     img.onload = () => resolve(img);
                     img.onerror = () => {

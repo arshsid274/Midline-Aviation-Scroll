@@ -1,11 +1,18 @@
 "use client";
 import { useRef, useEffect, useMemo } from 'react';
-import { useScroll, useTransform, motion } from 'framer-motion';
+import { useScroll, useTransform } from 'framer-motion';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
+
+declare global {
+    interface Window {
+        __midlineSequenceComplete?: boolean;
+    }
+}
 
 export const UnifiedCanvas = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const sequenceCompletionAnnounced = useRef(false);
 
     // Load all sequences
     const { images: seq1, loaded: loaded1 } = useImagePreloader('/sequence-1', 120);
@@ -31,6 +38,12 @@ export const UnifiedCanvas = () => {
     const frameIndex = useTransform(scrollYProgress, [0, 1], [0, 359]);
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.__midlineSequenceComplete = false;
+        sequenceCompletionAnnounced.current = false;
+    }, []);
+
+    useEffect(() => {
         if (!loaded1 || !loaded2 || !loaded3) return;
 
         let animationId: number;
@@ -40,6 +53,15 @@ export const UnifiedCanvas = () => {
             if (ctx) {
                 // Clear logic
                 const currentFrame = Math.floor(frameIndex.get());
+
+                if (!sequenceCompletionAnnounced.current && currentFrame >= 359) {
+                    sequenceCompletionAnnounced.current = true;
+                    if (typeof window !== 'undefined') {
+                        window.__midlineSequenceComplete = true;
+                        window.dispatchEvent(new Event('midline:sequence-complete'));
+                    }
+                }
+
                 let img: HTMLImageElement | undefined;
 
                 if (currentFrame < 120) {
@@ -83,16 +105,27 @@ export const UnifiedCanvas = () => {
 
     return (
         <div ref={containerRef} className="absolute top-0 left-0 w-full h-[1200vh] -z-10 bg-[#0e152e]">
-            <div className="sticky top-0 h-screen w-full overflow-hidden">
+            <div className="sticky top-0 h-[100svh] w-full overflow-hidden">
                 {(!loaded1 || !loaded2 || !loaded3) ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#0e152e] text-white z-50">
-                        <div className="text-center">
-                            <div className="text-2xl font-bold mb-4">Initializing Experience...</div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#0e152e] text-white z-50" aria-live="polite">
+                        <div className="text-center px-6">
+                            <div className="text-lg sm:text-xl md:text-2xl font-bold mb-4">Initializing Experience...</div>
                             {/* Could add meaningful progress here */}
                         </div>
                     </div>
                 ) : (
-                    <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover" />
+                    <>
+                        <canvas
+                            ref={canvasRef}
+                            role="img"
+                            aria-describedby="canvas-description"
+                            aria-label="Animated Midline Airlines fleet and cabin showcase"
+                            className="absolute top-0 left-0 w-full h-full object-cover"
+                        />
+                        <p id="canvas-description" className="sr-only">
+                            Cinematic animation featuring Midline Airlines private aircraft, luxury cabin interiors, and aviation service highlights.
+                        </p>
+                    </>
                 )}
             </div>
         </div>
