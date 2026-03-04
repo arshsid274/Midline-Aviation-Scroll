@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import Lenis from "@studio-freight/lenis";
+import Lenis from "lenis";
 
 declare global {
     interface Window {
@@ -14,8 +14,8 @@ function SmoothScrolling({ children }: { children: React.ReactNode }) {
             lerp: 0.08,
             duration: 1.5,
             smoothWheel: true,
-            smoothTouch: true,   // enables Lenis on iOS/touch (fixes momentum blast)
-            touchMultiplier: 1.5, // controls how fast touch scroll advances
+            syncTouch: true,      // enables Lenis on iOS/touch
+            touchMultiplier: 1.5, // controls scroll speed on touch
         });
         window.__lenis = lenis;
 
