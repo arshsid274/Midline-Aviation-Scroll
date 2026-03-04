@@ -1,6 +1,5 @@
 "use client";
 import { useRef, useEffect, useMemo } from 'react';
-import { useScroll, useTransform } from 'framer-motion';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 
 declare global {
@@ -14,28 +13,13 @@ export const UnifiedCanvas = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const sequenceCompletionAnnounced = useRef(false);
 
-    // Load all sequences
     const { images: seq1, loaded: loaded1 } = useImagePreloader('/sequence-1', 120);
     const { images: seq2, loaded: loaded2 } = useImagePreloader('/sequence-2', 120);
     const { images: seq3, loaded: loaded3 } = useImagePreloader('/sequence-3', 120);
 
-    // Combine images into one timeline? 
-    // No, checking index is better to avoid massive array allocation if needed, but combined array is easier for index mapping.
-    // Let's keep them separate to manage memory or just combined reference.
     const allImages = useMemo(() => {
-        // Only combine if all loaded to avoid partial renders or index mismatches?
-        // Actually, we can just access them by index range.
         return { seq1, seq2, seq3 };
     }, [seq1, seq2, seq3]);
-
-    const { scrollYProgress } = useScroll({
-        target: containerRef,
-        offset: ["start start", "end end"]
-    });
-
-    // Total frames approx 360. 
-    // Map 0-1 progress to 0-359 frames.
-    const frameIndex = useTransform(scrollYProgress, [0, 1], [0, 359]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -49,10 +33,19 @@ export const UnifiedCanvas = () => {
         let animationId: number;
 
         const render = () => {
-            const ctx = canvasRef.current?.getContext('2d');
-            if (ctx) {
-                // Clear logic
-                const currentFrame = Math.floor(frameIndex.get());
+            const canvas = canvasRef.current;
+            const container = containerRef.current;
+            const ctx = canvas?.getContext('2d');
+
+            if (ctx && canvas && container) {
+                // Use getBoundingClientRect() — reads from compositor, works in real-time on iOS
+                const rect = container.getBoundingClientRect();
+                const scrollableHeight = rect.height - window.innerHeight;
+                const scrollProgress = scrollableHeight > 0
+                    ? Math.max(0, Math.min(1, -rect.top / scrollableHeight))
+                    : 0;
+
+                const currentFrame = Math.floor(scrollProgress * 359);
 
                 if (!sequenceCompletionAnnounced.current && currentFrame >= 359) {
                     sequenceCompletionAnnounced.current = true;
@@ -73,8 +66,6 @@ export const UnifiedCanvas = () => {
                 }
 
                 if (img) {
-                    const canvas = canvasRef.current!;
-                    // Cover logic
                     const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
                     const x = (canvas.width / 2) - (img.width / 2) * scale;
                     const y = (canvas.height / 2) - (img.height / 2) * scale;
@@ -83,6 +74,7 @@ export const UnifiedCanvas = () => {
                     ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
                 }
             }
+
             animationId = requestAnimationFrame(render);
         };
 
@@ -101,7 +93,7 @@ export const UnifiedCanvas = () => {
             window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(animationId);
         };
-    }, [loaded1, loaded2, loaded3, allImages, frameIndex]);
+    }, [loaded1, loaded2, loaded3, allImages]);
 
     return (
         <div ref={containerRef} className="absolute top-0 left-0 w-full h-[1200vh] -z-10 bg-[#0e152e]">
@@ -110,7 +102,6 @@ export const UnifiedCanvas = () => {
                     <div className="absolute inset-0 flex items-center justify-center bg-[#0e152e] text-white z-50" aria-live="polite">
                         <div className="text-center px-6">
                             <div className="text-lg sm:text-xl md:text-2xl font-bold mb-4">Initializing Experience...</div>
-                            {/* Could add meaningful progress here */}
                         </div>
                     </div>
                 ) : (
