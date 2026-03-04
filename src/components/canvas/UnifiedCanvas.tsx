@@ -86,6 +86,85 @@ export const UnifiedCanvas = () => {
 
         window.addEventListener('resize', handleResize);
         handleResize();
+
+        // ── iOS: block native scroll, drive frames via touch ─────────────
+        // e.preventDefault() on touchmove is the only reliable way to stop
+        // iOS momentum scroll from blasting through the 1200vh canvas range.
+        // SmoothScrolling disables Lenis syncTouch on iOS so there's no conflict.
+        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            let touchStartY = 0;
+            let virtualProgress = 0; // 0–1 across full animation
+            let lerpedProgress = 0;
+            let animationDone = false;
+
+            // Draw first frame immediately
+            const drawIOS = (frame: number) => {
+                const canvas = canvasRef.current;
+                const ctx = canvas?.getContext('2d');
+                if (!ctx || !canvas) return;
+                let img: HTMLImageElement | undefined;
+                if (frame < 120) img = allImages.seq1[Math.min(frame, 119)];
+                else if (frame < 240) img = allImages.seq2[Math.min(frame - 120, 119)];
+                else img = allImages.seq3[Math.min(frame - 240, 119)];
+                if (img) {
+                    const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+                    const x = (canvas.width / 2) - (img.width / 2) * scale;
+                    const y = (canvas.height / 2) - (img.height / 2) * scale;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                }
+                if (!sequenceCompletionAnnounced.current && frame >= 359) {
+                    sequenceCompletionAnnounced.current = true;
+                    window.__midlineSequenceComplete = true;
+                    window.dispatchEvent(new Event('midline:sequence-complete'));
+                }
+            };
+
+            drawIOS(0);
+
+            const onTouchStart = (e: TouchEvent) => {
+                if (animationDone) return;
+                touchStartY = e.touches[0].clientY;
+            };
+
+            const onTouchMove = (e: TouchEvent) => {
+                if (animationDone) return;
+                // This preventDefault is what locks the page on iOS.
+                // Requires { passive: false } on the listener.
+                e.preventDefault();
+                const deltaY = touchStartY - e.touches[0].clientY;
+                touchStartY = e.touches[0].clientY;
+                // 3 screen-heights of total swipe distance completes animation
+                virtualProgress = Math.max(0, Math.min(1, virtualProgress + deltaY / (window.innerHeight * 3)));
+            };
+
+            const rafIOS = () => {
+                // Lerp toward target for smooth frame catch-up
+                lerpedProgress += (virtualProgress - lerpedProgress) * 0.12;
+                drawIOS(Math.round(lerpedProgress * 359));
+
+                if (!animationDone && lerpedProgress >= 0.99) {
+                    animationDone = true;
+                    // Animation done — native scroll resumes (touchmove returns early,
+                    // no more preventDefault). User can scroll the rest of the page.
+                }
+                animationId = requestAnimationFrame(rafIOS);
+            };
+
+            // passive: false is required so e.preventDefault() is allowed on touchmove
+            document.addEventListener('touchstart', onTouchStart, { passive: false });
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            animationId = requestAnimationFrame(rafIOS);
+
+            return () => {
+                window.removeEventListener('resize', handleResize);
+                document.removeEventListener('touchstart', onTouchStart);
+                document.removeEventListener('touchmove', onTouchMove);
+                cancelAnimationFrame(animationId);
+            };
+        }
+
+        // ── Android / Desktop: existing RAF + getBoundingClientRect ───────
         animationId = requestAnimationFrame(render);
 
         return () => {
