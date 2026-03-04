@@ -10,6 +10,10 @@ declare global {
 
 function SmoothScrolling({ children }: { children: React.ReactNode }) {
     useEffect(() => {
+        // Skip Lenis on touch devices (iOS/Android) — native scroll is better there
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (isTouch) return;
+
         const lenis = new Lenis({
             lerp: 0.1,
             duration: 1.5,
